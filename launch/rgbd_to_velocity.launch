@@ -1,0 +1,6 @@
+<launch>
+    <!-- start world -->
+    <node name="rgbd_to_velocity" pkg="rgbd_to_velocity" type="rgbd_to_velocity" output="screen">
+        <rosparam command="load" file="$(find demo_rgbd)/params/kiwi_camera.yaml" />
+    </node>
+</launch>

@@ -1,0 +1,8 @@
+#####
+convert_to_ned: false
+verbose: false
+alpha: 1.0
+update_rate: 20
+x_vel_covariance: 0.01
+y_vel_covariance: 0.01
+

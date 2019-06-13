@@ -1,0 +1,36 @@
+<launch>
+  <!-- start world -->
+  <node name="gazebo" pkg="gazebo_ros" type="gazebo"
+        args="$(find turtle_nav)/launch/empty_world.world" respawn="false" output="screen" />
+  <!--ROBOT A-->
+  <group ns="robotA" clear_params="true">
+    <param name="robot_description"
+           command="$(find xacro)/xacro.py $(find turtlebot_description)/robots/kobuki_hexagons_asus_xtion_pro.urdf.xacro" />
+
+    <node pkg="robot_state_publisher"
+          type="state_publisher" name="robot_state_publisher">
+      <param name="tf_prefix" value="robotA"/>
+      <param name="publish_frequency" type="double" value="30.0"/>
+    </node>
+
+    <node name="spawn_test_bot" pkg="gazebo_ros" type="spawn_model"
+          args="-z 0.2 -x 0 -urdf -param robot_description -model robot_description"
+          respawn="false" />
+  </group>
+
+  <!--ROBOT B-->
+  <group ns="robotB" clear_params="true">
+    <param name="robot_description"
+           command="$(find xacro)/xacro.py $(find turtlebot_description)/robots/kobuki_hexagons_asus_xtion_pro.urdf.xacro" />
+
+    <node pkg="robot_state_publisher"
+          type="state_publisher"
+          name="robot_state_publisher">
+      <param name="tf_prefix" value="robotB"/>
+      <param name="publish_frequency" type="double" value="30.0"/>
+    </node>
+    <node name="spawn_test_bot" pkg="gazebo_ros" type="spawn_model"
+          args="-z 0.2 -x 3 -urdf -param robot_description -model robot_description2"
+          respawn="false" />
+  </group>
+</launch>
