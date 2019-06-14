@@ -52,12 +52,12 @@ namespace rgbd_to_velocity {
 
         odom_msg = *msg;
 
-        quat.x() =  odom_msg.pose.pose.orientation.x;
-        quat.y() =  odom_msg.pose.pose.orientation.y;
-        quat.z() =  odom_msg.pose.pose.orientation.z;
-        quat.w() =  odom_msg.pose.pose.orientation.w;
-
-        euler_deg = quat.toRotationMatrix().eulerAngles(1, 0, 2); //converted to degrees here already
+//        quat.x() =  odom_msg.pose.pose.orientation.x;
+//        quat.y() =  odom_msg.pose.pose.orientation.y;
+//        quat.z() =  odom_msg.pose.pose.orientation.z;
+//        quat.w() =  odom_msg.pose.pose.orientation.w;
+//
+//        euler_deg = quat.toRotationMatrix().eulerAngles(1, 0, 2); //converted to degrees here already
 
         counterOfSamples++;
         current_time_stamp = odom_msg.header.stamp.toSec();
@@ -105,7 +105,6 @@ namespace rgbd_to_velocity {
             C_from_camera_level_to_body_level_NED_frame <<      cos(yaw),      sin(yaw),   0,
                                                                -sin(yaw),     cos(yaw),    0,
                                                                 0,              0,         1 ;
-
 
             //Estimating angular velocity.
 //          Eigen::Vector4d delta_quaternion(4,1);
@@ -163,20 +162,27 @@ namespace rgbd_to_velocity {
             vel_msg.vel.twist.twist.linear.y = filtered_velocity_body_leveled_frame(1);
             vel_msg.vel.twist.twist.linear.z = filtered_velocity_body_leveled_frame(2);
             covariance_matrix_in_init <<   x_vel_covariance, 0,                   0 ,
-                    0,               y_vel_covariance ,    0,
-                    0,                0,                   0;
+                                                0,               y_vel_covariance ,    0,
+                                                0,                0,                   0;
 
 
             covariance_matrix_in_body_level = C_from_camera_level_to_body_level_NED_frame*C_init_to_NED_camera_level_frame* covariance_matrix_in_init * (C_from_camera_level_to_body_level_NED_frame*C_init_to_NED_camera_level_frame).transpose();
 
+            //Next we fill out the message
+            Eigen::Vector3d sigmas_level;
+            sigmas_level = covariance_matrix_in_body_level.diagonal().array().sqrt();
             vel_msg.vel.twist.covariance[0] = covariance_matrix_in_body_level(0,0);
             vel_msg.vel.twist.covariance[7] = covariance_matrix_in_body_level(1,1);
-
+            vel_msg.vel.twist.covariance[14] = covariance_matrix_in_body_level(2,2);
+            vel_msg.S_upper_bound[0] = filtered_velocity_body_leveled_frame(0)  + 3*sigmas_level(0);
+            vel_msg.S_upper_bound[1] = filtered_velocity_body_leveled_frame(1)  + 3*sigmas_level(1);
+            vel_msg.S_upper_bound[2] = filtered_velocity_body_leveled_frame(2)  + 3*sigmas_level(2);
+            vel_msg.S_lower_bound[0] = filtered_velocity_body_leveled_frame(0)  - 3*sigmas_level(0);
+            vel_msg.S_lower_bound[1] = filtered_velocity_body_leveled_frame(1)  - 3*sigmas_level(1);
+            vel_msg.S_lower_bound[2] = filtered_velocity_body_leveled_frame(2)  - 3*sigmas_level(2);
             velocity_level_body_publisher_.publish(vel_msg);
             counterOfSamples = 0;
         }
-
-
     }
 
     void RgbdToVelocity::CtoYawPitchRoll321(Eigen::Matrix3d C){
