@@ -171,14 +171,16 @@ namespace rgbd_to_velocity {
             //Next we fill out the message
             Eigen::Vector3d sigmas_level;
             sigmas_level = covariance_matrix_in_body_level.diagonal().array().sqrt();
-            vel_msg.vel.twist.covariance[0] = covariance_matrix_in_body_level(0,0);
-            vel_msg.vel.twist.covariance[7] = covariance_matrix_in_body_level(1,1);
+            vel_msg.vel.twist.covariance[0] = x_vel_covariance;
+            vel_msg.vel.twist.covariance[7] = y_vel_covariance;
+//            vel_msg.vel.twist.covariance[0] = covariance_matrix_in_body_level(0,0);
+//            vel_msg.vel.twist.covariance[7] = covariance_matrix_in_body_level(1,1);
             vel_msg.vel.twist.covariance[14] = covariance_matrix_in_body_level(2,2);
-            vel_msg.S_upper_bound[0] = filtered_velocity_body_leveled_frame(0)  + 3*sigmas_level(0);
-            vel_msg.S_upper_bound[1] = filtered_velocity_body_leveled_frame(1)  + 3*sigmas_level(1);
+            vel_msg.S_upper_bound[0] = filtered_velocity_body_leveled_frame(0)  + 3*sqrt(x_vel_covariance);
+            vel_msg.S_upper_bound[1] = filtered_velocity_body_leveled_frame(1)  + 3*sqrt(y_vel_covariance);
             vel_msg.S_upper_bound[2] = filtered_velocity_body_leveled_frame(2)  + 3*sigmas_level(2);
-            vel_msg.S_lower_bound[0] = filtered_velocity_body_leveled_frame(0)  - 3*sigmas_level(0);
-            vel_msg.S_lower_bound[1] = filtered_velocity_body_leveled_frame(1)  - 3*sigmas_level(1);
+            vel_msg.S_lower_bound[0] = filtered_velocity_body_leveled_frame(0)  - 3*sqrt(x_vel_covariance);
+            vel_msg.S_lower_bound[1] = filtered_velocity_body_leveled_frame(1)  - 3*sqrt(y_vel_covariance);
             vel_msg.S_lower_bound[2] = filtered_velocity_body_leveled_frame(2)  - 3*sigmas_level(2);
             velocity_level_body_publisher_.publish(vel_msg);
             counterOfSamples = 0;
