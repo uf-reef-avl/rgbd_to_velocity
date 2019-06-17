@@ -3,6 +3,6 @@ convert_to_ned: false
 verbose: false
 alpha: 1.0
 update_rate: 20
-x_vel_covariance: 0.02
-y_vel_covariance: 0.02
+x_vel_covariance: 0.008
+y_vel_covariance: 0.008
 
