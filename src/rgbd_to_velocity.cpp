@@ -7,8 +7,10 @@
 
 namespace rgbd_to_velocity {
     //Constructor
-    RgbdToVelocity::RgbdToVelocity(): private_nh_("~"), nh_("") {
+    RgbdToVelocity::RgbdToVelocity(): private_nh_("~"), nh_(""), initialized(false) {
         pose_subscriber_ = nh_.subscribe("cam_to_init", 1, &RgbdToVelocity::poseCallback, this);
+        dvo_subscriber_ = nh_.subscribe<geometry_msgs::PoseWithCovarianceStamped>("dvo_pose", 1, &RgbdToVelocity::dvoCallback, this);
+        imu_subscriber_ = nh_.subscribe<sensor_msgs::Imu>("imu/data", 1, &RgbdToVelocity::imuCallback, this);
         velocity_init_frame_publisher_ = nh_.advertise<reef_msgs::DeltaToVel>("rgbd_to_velocity/init_frame", 1, true);
 //    velocity_camera_frame_publisher_ = nh_.advertise<geometry_msgs::TwistWithCovarianceStamped>("mocap_velocity/camera_frame", 1, true);
         velocity_level_body_publisher_ = nh_.advertise<reef_msgs::DeltaToVel>("rgbd_to_velocity/body_level_frame", 1, true);
@@ -47,6 +49,62 @@ namespace rgbd_to_velocity {
 
     //Destructor
     RgbdToVelocity::~RgbdToVelocity() {}
+
+    void RgbdToVelocity::imuCallback(const sensor_msgs::ImuConstPtr &msg) {
+        // This is in NED Frame
+        reef_msgs::roll_pitch_yaw_from_quaternion(msg->orientation, inertial_to_body_roll, inertial_to_body_pitch, inertial_to_body_yaw);
+        Eigen::Quaterniond q_inertial_to_body;
+        tf2::fromMsg(msg->orientation, q_inertial_to_body);
+        C_inertial_to_body = q_inertial_to_body.toRotationMatrix().transpose();
+    }
+
+    void RgbdToVelocity::dvoCallback(const geometry_msgs::PoseWithCovarianceStampedConstPtr &msg) {
+
+        if(!initialized){
+            last_time = msg->header.stamp;
+            initialized = true;
+            return;
+        }
+
+        DT = 1/(msg->header.stamp - last_time).toSec();
+
+        Eigen::Affine3d odom_in_camera_frame;
+        tf2::fromMsg(msg->pose.pose, odom_in_camera_frame);
+
+        Eigen::Vector3d position_odom_in_camera_frame = odom_in_camera_frame.translation();
+        Eigen::Matrix3d C_odom_in_camera_frame = odom_in_camera_frame.linear().transpose();
+
+        Eigen::Matrix3d C_body_to_camera_frame = quaternionToRotation(quaternion_body_to_camera.head(3),quaternion_body_to_camera(3));
+
+        Eigen::Matrix3d C1;
+        C1 << 1, cos(inertial_to_body_roll), sin(inertial_to_body_roll),
+            0, -sin(inertial_to_body_roll), cos(inertial_to_body_roll),
+            0, 0, 0;
+        Eigen::Matrix3d C2;
+        C2 << cos(inertial_to_body_pitch), 0, -sin(inertial_to_body_pitch),
+        0, 1, 0,
+        sin(inertial_to_body_pitch), 0, cos(inertial_to_body_pitch);
+
+        Eigen::Matrix3d C_camera_to_body_level = C2.transpose() * C1.transpose() * C_inertial_to_body * C_body_to_camera_frame.transpose();
+
+        Eigen::Vector3d delta_position_odom_in_body_level_frame = C_camera_to_body_level * position_odom_in_camera_frame;
+
+        Eigen::Vector3d velocity_in_body_level_frame = delta_position_odom_in_body_level_frame / DT;
+
+        // TODO: Humberto, please figure out the rotational velocity
+
+        Eigen::Vector3d filtered_velocity = alpha * velocity_in_body_level_frame + (1 - alpha) * velocity_in_body_level_frame;
+
+        vel_msg.vel.header.stamp = msg->header.stamp;
+        vel_msg.vel.twist.twist.linear.x = filtered_velocity(0);
+        vel_msg.vel.twist.twist.linear.y = filtered_velocity(1);
+        vel_msg.vel.twist.twist.linear.z = filtered_velocity(2);
+
+        velocity_level_body_publisher_.publish(vel_msg);
+
+
+
+    }
 
     void RgbdToVelocity::poseCallback(const nav_msgs::OdometryConstPtr& msg) {
 

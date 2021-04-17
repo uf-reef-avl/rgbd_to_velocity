@@ -9,6 +9,8 @@
 #include <nav_msgs/Odometry.h>
 #include <geometry_msgs/TwistStamped.h>
 #include <geometry_msgs/TwistWithCovarianceStamped.h>
+#include <geometry_msgs/PoseWithCovarianceStamped.h>
+#include <sensor_msgs/Imu.h>
 #include <eigen3/Eigen/Core>
 #include <Eigen/Geometry>
 #include <iostream>
@@ -20,6 +22,7 @@
 #include "../../reef_msgs/include/reef_msgs/matrix_operation.h"
 #include "../../reef_msgs/include/reef_msgs/dynamics.h"
 #include <reef_msgs/DeltaToVel.h>
+#include <tf2_eigen/tf2_eigen.h>
 
 namespace rgbd_to_velocity {
 
@@ -32,6 +35,13 @@ namespace rgbd_to_velocity {
         ros::Publisher velocity_camera_frame_publisher_;
         ros::Publisher velocity_level_body_publisher_;
         ros::Subscriber pose_subscriber_;
+        ros::Subscriber dvo_subscriber_;
+        ros::Subscriber imu_subscriber_;
+        double inertial_to_body_roll;
+        double inertial_to_body_pitch;
+        double inertial_to_body_yaw;
+        ros::Time last_time;
+        bool initialized;
 
 
 
@@ -71,6 +81,7 @@ namespace rgbd_to_velocity {
         Eigen::MatrixXd current_quaternion_init_to_body;
         Eigen::Matrix3d C_from_init_to_camera_level_frame;
         Eigen::Matrix3d C_from_camera_level_frame_to_NED_level_frame;
+        Eigen::Matrix3d C_inertial_to_body;
         Eigen::Matrix3d covariance_matrix_in_init;
         Eigen::Matrix3d covariance_matrix_in_body_level;
 
@@ -91,6 +102,9 @@ namespace rgbd_to_velocity {
 
         //Declare all callbacks here
         void poseCallback(const nav_msgs::OdometryConstPtr& msg);
+
+        void dvoCallback(const geometry_msgs::PoseWithCovarianceStampedConstPtr& msg);
+        void imuCallback(const sensor_msgs::ImuConstPtr& msg);
 
 
     };
