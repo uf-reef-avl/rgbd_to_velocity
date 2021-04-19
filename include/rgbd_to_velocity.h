@@ -23,7 +23,6 @@
 #include "../../reef_msgs/include/reef_msgs/dynamics.h"
 #include <reef_msgs/DeltaToVel.h>
 #include <tf2_eigen/tf2_eigen.h>
-
 namespace rgbd_to_velocity {
 
     class RgbdToVelocity {
@@ -42,6 +41,8 @@ namespace rgbd_to_velocity {
         double inertial_to_body_yaw;
         ros::Time last_time;
         bool initialized;
+
+        Eigen::Vector3d past_velocity_body_level_frame;
 
 
 
@@ -71,7 +72,7 @@ namespace rgbd_to_velocity {
         reef_msgs::DeltaToVel vel_msg;
         void CtoYawPitchRoll213(Eigen::Matrix3d C);
         void CtoYawPitchRoll321(Eigen::Matrix3d C);
-        Eigen::Matrix3d quaternionToRotation(Eigen::Vector3d quaternionVectorPart, double quaternionScalarPart);
+        Eigen::Matrix3d quaternionToDCM(Eigen::Vector3d quaternionVectorPart, double quaternionScalarPart);
         Eigen::Vector4d multiplyQuat(Eigen::MatrixXd q,Eigen::MatrixXd p);
 
         std::mt19937 engine;

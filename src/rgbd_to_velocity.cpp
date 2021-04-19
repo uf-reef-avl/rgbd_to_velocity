@@ -14,7 +14,7 @@ namespace rgbd_to_velocity {
         velocity_init_frame_publisher_ = nh_.advertise<reef_msgs::DeltaToVel>("rgbd_to_velocity/init_frame", 1, true);
 //    velocity_camera_frame_publisher_ = nh_.advertise<geometry_msgs::TwistWithCovarianceStamped>("mocap_velocity/camera_frame", 1, true);
         velocity_level_body_publisher_ = nh_.advertise<reef_msgs::DeltaToVel>("rgbd_to_velocity/body_level_frame", 1, true);
-
+        past_velocity_body_level_frame.setZero();
         C_from_camera_level_frame_to_NED_level_frame << 0, 0, 1,
                 -1,0,0,
                 0,-1,0;
@@ -52,10 +52,13 @@ namespace rgbd_to_velocity {
 
     void RgbdToVelocity::imuCallback(const sensor_msgs::ImuConstPtr &msg) {
         // This is in NED Frame
-        reef_msgs::roll_pitch_yaw_from_quaternion(msg->orientation, inertial_to_body_roll, inertial_to_body_pitch, inertial_to_body_yaw);
+//        reef_msgs::roll_pitch_yaw_from_quaternion(msg->orientation, inertial_to_body_roll, inertial_to_body_pitch, inertial_to_body_yaw);
         Eigen::Quaterniond q_inertial_to_body;
         tf2::fromMsg(msg->orientation, q_inertial_to_body);
         C_inertial_to_body = q_inertial_to_body.toRotationMatrix().transpose();
+        reef_msgs::roll_pitch_yaw_from_rotation321(C_inertial_to_body, inertial_to_body_roll, inertial_to_body_pitch, inertial_to_body_yaw);
+
+
     }
 
     void RgbdToVelocity::dvoCallback(const geometry_msgs::PoseWithCovarianceStampedConstPtr &msg) {
@@ -66,26 +69,25 @@ namespace rgbd_to_velocity {
             return;
         }
 
-        DT = 1/(msg->header.stamp - last_time).toSec();
+        DT = (msg->header.stamp - last_time).toSec();
 
         Eigen::Affine3d odom_in_camera_frame;
         tf2::fromMsg(msg->pose.pose, odom_in_camera_frame);
 
         Eigen::Vector3d position_odom_in_camera_frame = odom_in_camera_frame.translation();
         Eigen::Matrix3d C_odom_in_camera_frame = odom_in_camera_frame.linear().transpose();
-
-        Eigen::Matrix3d C_body_to_camera_frame = quaternionToRotation(quaternion_body_to_camera.head(3),quaternion_body_to_camera(3));
-
+        Eigen::Matrix3d C_body_to_camera_frame = quaternionToDCM(quaternion_body_to_camera.head(3),quaternion_body_to_camera(3));
         Eigen::Matrix3d C1;
-        C1 << 1, cos(inertial_to_body_roll), sin(inertial_to_body_roll),
-            0, -sin(inertial_to_body_roll), cos(inertial_to_body_roll),
-            0, 0, 0;
+        C1 << 1, 0, 0,
+              0, cos(inertial_to_body_roll), sin(inertial_to_body_roll),
+              0, -sin(inertial_to_body_roll), cos(inertial_to_body_roll);
+
         Eigen::Matrix3d C2;
         C2 << cos(inertial_to_body_pitch), 0, -sin(inertial_to_body_pitch),
-        0, 1, 0,
-        sin(inertial_to_body_pitch), 0, cos(inertial_to_body_pitch);
+                                        0, 1, 0,
+              sin(inertial_to_body_pitch), 0, cos(inertial_to_body_pitch);
 
-        Eigen::Matrix3d C_camera_to_body_level = C2.transpose() * C1.transpose() * C_inertial_to_body * C_body_to_camera_frame.transpose();
+        Eigen::Matrix3d C_camera_to_body_level = C2.transpose() * C1.transpose() *  C_body_to_camera_frame.transpose();
 
         Eigen::Vector3d delta_position_odom_in_body_level_frame = C_camera_to_body_level * position_odom_in_camera_frame;
 
@@ -93,16 +95,16 @@ namespace rgbd_to_velocity {
 
         // TODO: Humberto, please figure out the rotational velocity
 
-        Eigen::Vector3d filtered_velocity = alpha * velocity_in_body_level_frame + (1 - alpha) * velocity_in_body_level_frame;
-
+        Eigen::Vector3d filtered_velocity = alpha * velocity_in_body_level_frame + (1 - alpha) * past_velocity_body_level_frame;
+        past_velocity_body_level_frame = filtered_velocity;
         vel_msg.vel.header.stamp = msg->header.stamp;
-        vel_msg.vel.twist.twist.linear.x = filtered_velocity(0);
-        vel_msg.vel.twist.twist.linear.y = filtered_velocity(1);
-        vel_msg.vel.twist.twist.linear.z = filtered_velocity(2);
+        vel_msg.vel.twist.twist.linear.x = filtered_velocity.x();
+        vel_msg.vel.twist.twist.linear.y = filtered_velocity.y();
+        vel_msg.vel.twist.twist.linear.z = filtered_velocity.z();
 
         velocity_level_body_publisher_.publish(vel_msg);
 
-
+        last_time = msg->header.stamp;
 
     }
 
@@ -132,7 +134,7 @@ namespace rgbd_to_velocity {
 
             Eigen::MatrixXd C_init_to_camera_frame(3,3);
             //Cayley transform. Convert quaternion message into a C matrix.
-            C_init_to_camera_frame =  quaternionToRotation(beta,beta_0);
+            C_init_to_camera_frame =  quaternionToDCM(beta,beta_0);
 
 
 
@@ -152,7 +154,7 @@ namespace rgbd_to_velocity {
 
             //Cayley transform. Convert quaternion message into a C matrix.
             Eigen::MatrixXd C_body_to_camera_frame(3,3);
-            C_body_to_camera_frame = quaternionToRotation(quaternion_body_to_camera.head(3),quaternion_body_to_camera(3));
+            C_body_to_camera_frame = quaternionToDCM(quaternion_body_to_camera.head(3),quaternion_body_to_camera(3));
 
 
             Eigen::MatrixXd C_from_camera_level_to_body_NED_frame(3,3);
@@ -197,12 +199,12 @@ namespace rgbd_to_velocity {
 //          inv_previous_quaternion_init_to_body << -current_quaternion_init_to_body(0), -current_quaternion_init_to_body(1), -current_quaternion_init_to_body(2),current_quaternion_init_to_body(3);
 
             //Publish velocities in init frame
-            vel_msg.vel.header.stamp = odom_msg.header.stamp;
-            vel_msg.vel.twist.twist.linear.x = filtered_velocity_init(0);
-            vel_msg.vel.twist.twist.linear.y = filtered_velocity_init(1);
-            vel_msg.vel.twist.twist.linear.z = filtered_velocity_init(2);
-
-            velocity_init_frame_publisher_.publish(vel_msg);
+//            vel_msg.vel.header.stamp = odom_msg.header.stamp;
+//            vel_msg.vel.twist.twist.linear.x = filtered_velocity_init(0);
+//            vel_msg.vel.twist.twist.linear.y = filtered_velocity_init(1);
+//            vel_msg.vel.twist.twist.linear.z = filtered_velocity_init(2);
+//
+//            velocity_init_frame_publisher_.publish(vel_msg);
 
             //Publish velocities in camera frame
 //          filtered_velocity_body_leveled_frame = C_body_to_camera_frame * C_init_to_camera_frame * filtered_velocity_init;
@@ -214,34 +216,34 @@ namespace rgbd_to_velocity {
 //          velocity_camera_frame_publisher_.publish(vel_msg);
 //
 //          //Publish velocities in NED camera leveled frame
-            filtered_velocity_body_leveled_frame =  C_from_camera_level_to_body_level_NED_frame*C_init_to_NED_camera_level_frame*filtered_velocity_init;
-            vel_msg.vel.header.stamp = odom_msg.header.stamp;
-            vel_msg.vel.twist.twist.linear.x = filtered_velocity_body_leveled_frame(0);
-            vel_msg.vel.twist.twist.linear.y = filtered_velocity_body_leveled_frame(1);
-            vel_msg.vel.twist.twist.linear.z = filtered_velocity_body_leveled_frame(2);
-            covariance_matrix_in_init <<   x_vel_covariance, 0,                   0 ,
-                                                0,               y_vel_covariance ,    0,
-                                                0,                0,                   0;
-
-
-            covariance_matrix_in_body_level = C_from_camera_level_to_body_level_NED_frame*C_init_to_NED_camera_level_frame* covariance_matrix_in_init * (C_from_camera_level_to_body_level_NED_frame*C_init_to_NED_camera_level_frame).transpose();
-
-            //Next we fill out the message
-            Eigen::Vector3d sigmas_level;
-            sigmas_level = covariance_matrix_in_body_level.diagonal().array().sqrt();
-            vel_msg.vel.twist.covariance[0] = x_vel_covariance;
-            vel_msg.vel.twist.covariance[7] = y_vel_covariance;
-//            vel_msg.vel.twist.covariance[0] = covariance_matrix_in_body_level(0,0);
-//            vel_msg.vel.twist.covariance[7] = covariance_matrix_in_body_level(1,1);
-            vel_msg.vel.twist.covariance[14] = covariance_matrix_in_body_level(2,2);
-            vel_msg.S_upper_bound[0] = filtered_velocity_body_leveled_frame(0)  + 3*sqrt(x_vel_covariance);
-            vel_msg.S_upper_bound[1] = filtered_velocity_body_leveled_frame(1)  + 3*sqrt(y_vel_covariance);
-            vel_msg.S_upper_bound[2] = filtered_velocity_body_leveled_frame(2)  + 3*sigmas_level(2);
-            vel_msg.S_lower_bound[0] = filtered_velocity_body_leveled_frame(0)  - 3*sqrt(x_vel_covariance);
-            vel_msg.S_lower_bound[1] = filtered_velocity_body_leveled_frame(1)  - 3*sqrt(y_vel_covariance);
-            vel_msg.S_lower_bound[2] = filtered_velocity_body_leveled_frame(2)  - 3*sigmas_level(2);
-            velocity_level_body_publisher_.publish(vel_msg);
-            counterOfSamples = 0;
+//            filtered_velocity_body_leveled_frame =  C_from_camera_level_to_body_level_NED_frame*C_init_to_NED_camera_level_frame*filtered_velocity_init;
+//            vel_msg.vel.header.stamp = odom_msg.header.stamp;
+//            vel_msg.vel.twist.twist.linear.x = filtered_velocity_body_leveled_frame(0);
+//            vel_msg.vel.twist.twist.linear.y = filtered_velocity_body_leveled_frame(1);
+//            vel_msg.vel.twist.twist.linear.z = filtered_velocity_body_leveled_frame(2);
+//            covariance_matrix_in_init <<   x_vel_covariance, 0,                   0 ,
+//                                                0,               y_vel_covariance ,    0,
+//                                                0,                0,                   0;
+//
+//
+//            covariance_matrix_in_body_level = C_from_camera_level_to_body_level_NED_frame*C_init_to_NED_camera_level_frame* covariance_matrix_in_init * (C_from_camera_level_to_body_level_NED_frame*C_init_to_NED_camera_level_frame).transpose();
+//
+//            //Next we fill out the message
+//            Eigen::Vector3d sigmas_level;
+//            sigmas_level = covariance_matrix_in_body_level.diagonal().array().sqrt();
+//            vel_msg.vel.twist.covariance[0] = x_vel_covariance;
+//            vel_msg.vel.twist.covariance[7] = y_vel_covariance;
+////            vel_msg.vel.twist.covariance[0] = covariance_matrix_in_body_level(0,0);
+////            vel_msg.vel.twist.covariance[7] = covariance_matrix_in_body_level(1,1);
+//            vel_msg.vel.twist.covariance[14] = covariance_matrix_in_body_level(2,2);
+//            vel_msg.S_upper_bound[0] = filtered_velocity_body_leveled_frame(0)  + 3*sqrt(x_vel_covariance);
+//            vel_msg.S_upper_bound[1] = filtered_velocity_body_leveled_frame(1)  + 3*sqrt(y_vel_covariance);
+//            vel_msg.S_upper_bound[2] = filtered_velocity_body_leveled_frame(2)  + 3*sigmas_level(2);
+//            vel_msg.S_lower_bound[0] = filtered_velocity_body_leveled_frame(0)  - 3*sqrt(x_vel_covariance);
+//            vel_msg.S_lower_bound[1] = filtered_velocity_body_leveled_frame(1)  - 3*sqrt(y_vel_covariance);
+//            vel_msg.S_lower_bound[2] = filtered_velocity_body_leveled_frame(2)  - 3*sigmas_level(2);
+//            velocity_level_body_publisher_.publish(vel_msg);
+//            counterOfSamples = 0;
         }
     }
 
@@ -259,7 +261,7 @@ namespace rgbd_to_velocity {
         roll =  atan2(C(0,1),C(1,1));
     }
 
-    Eigen::Matrix3d RgbdToVelocity::quaternionToRotation(Eigen::Vector3d quaternionVectorPart, double quaternionScalarPart)
+    Eigen::Matrix3d RgbdToVelocity::quaternionToDCM(Eigen::Vector3d quaternionVectorPart, double quaternionScalarPart)
     {
         //-------------------------------Block to compute Rotation Matrix
         double beta_0;
