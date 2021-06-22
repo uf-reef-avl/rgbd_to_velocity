@@ -1,8 +1,8 @@
 #####
 convert_to_ned: false
 verbose: false
-alpha: 0.8
+alpha: 0.90
 update_rate: 20
-x_vel_covariance: 0.015
-y_vel_covariance: 0.015
+x_vel_covariance: 0.017
+y_vel_covariance: 0.017
 
