@@ -1,7 +1,4 @@
 <launch>
-	<node name="rosflight" pkg="rosflight" type="rosflight_io" output="screen">
-		<param name="port" value="/dev/ttyUSB0"/>
-	</node>
 
     <include file="$(find realsense2_camera)/launch/rs_rgbd.launch"/>
 
