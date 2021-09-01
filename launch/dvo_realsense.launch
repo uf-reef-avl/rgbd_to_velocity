@@ -1,0 +1,9 @@
+<launch>
+    <include file="$(find dvo_ros)/launch/realsense.launch"/>
+    
+    <node name="rgbd_to_velocity" pkg="rgbd_to_velocity" type="rgbd_to_velocity" output="screen">
+        <rosparam command="load" file="$(find rgbd_to_velocity)/params/rgbd_to_velocity_params.yaml" />
+        <rosparam command="load" file="$(find rgbd_to_velocity)/params/kiwi_camera.yaml" />
+
+    </node>
+</launch>

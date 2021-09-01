@@ -4,8 +4,6 @@
     	</node>
 	
 	<include file="$(find realsense2_camera)/launch/rs_rgbd.launch"/>
-	
-	<include file="$(find demo_rgbd)/launch/demo_rgbd.launch"/>
 
 	<include file="$(find rgbd_to_velocity)/launch/rgbd_to_velocity.launch"/>
 	
