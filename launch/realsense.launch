@@ -15,6 +15,7 @@
 		<rosparam command="load" file="$(find rgbd_to_velocity)/params/rgbd_to_velocity_params.yaml" />
 		<rosparam command="load" file="$(find rgbd_to_velocity)/params/kiwi_camera.yaml" />
 		<remap from="dvo_pose" to="dvo_vis/rgbd/pose"/>
+		<remap from="imu/data" to="/mavros/imu/data"/>
 	</node>
 </launch>
 
